@@ -3,15 +3,25 @@ package yamlconfig
 import (
 	"fmt"
 	"github.com/globocom/config"
+	"os"
 	"os/user"
 	"path"
 	"strconv"
+	"time"
 )
 
 type loadDefFn func(conf *Config)
 
 type Config struct {
-	defaults map[string]interface{}
+	defaults       map[string]interface{}
+	configFileName string
+}
+
+func NewConfig(fileName string) *Config {
+	config := &Config{
+		configFileName: fileName,
+	}
+	return config
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -24,23 +34,28 @@ func (c *Config) ThrowKeyPanic(key string) {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-//func (c *Config) ThrowConversionPanic(key string, value) {
-//	panic(fmt.Sprintf("config error: key %s not available", key))
-//}
+func (c *Config) ThrowConversionPanic(src interface{}, err error) {
+	panic(fmt.Sprintf("config error: cannot convert %v :: error : %s", src, err.Error()))
+}
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 //
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) stringSlice2IntSlice(value []string) (res []int) {
+func (c *Config) stringSlice2IntSlice(values []string) []int {
 
-	for _, src := range value {
-		if v, err := strconv.Atoi(src); err == nil {
-			res = append(res, v)
-		} else {
-			//c.ThrowConversionPanic(key, src, int)
+	if values != nil {
+		res := make([]int, len(values))
+		for n, src := range values {
+			if v, err := strconv.Atoi(src); err == nil {
+				res[n] = v
+			} else {
+				c.ThrowConversionPanic(src, err)
+			}
 		}
+		return res
 	}
-	return
+
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -64,34 +79,51 @@ func (c *Config) GetInt(key string) int {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (c *Config) GetIntList(key string) []int {
 
-	var res []int
 	if value, err := config.GetList(key); err == nil {
-		res = c.stringSlice2IntSlice(value)
+		return c.stringSlice2IntSlice(value)
 	} else {
 		if val, ok := c.defaults[key]; ok {
-			res = val.([]int)
+			return val.([]int)
 		} else {
 			c.ThrowKeyPanic(key)
 		}
 	}
 
-	return res
+	return nil
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 // GetString
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (c *Config) GetString(key string) string {
-	value, err := config.GetString(key)
 
+	value, err := config.GetString(key)
 	if err != nil {
 		if val, ok := c.defaults[key]; ok {
-			res = val.(string)
+			return val.(string)
 		} else {
 			c.ThrowKeyPanic(key)
 		}
 	}
-	return value.(string)
+
+	return value
+}
+
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+// GetDuration
+///////////////////////////////////////////////////////////////////////////////////////////////////////
+func (c *Config) GetDuration(key string) time.Duration {
+
+	value, err := config.GetDuration(key)
+	if err != nil {
+		if val, ok := c.defaults[key]; ok {
+			return val.(time.Duration)
+		} else {
+			c.ThrowKeyPanic(key)
+		}
+	}
+
+	return value
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -99,12 +131,16 @@ func (c *Config) GetString(key string) string {
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (c *Config) GetStringList(key string) []string {
 
-	if value, err := config.GetList(key); err != nil {
-		if value, ok := c.defaults[key]; !ok {
+	value, err := config.GetList(key)
+	if err != nil {
+		if value, ok := c.defaults[key]; ok {
+			return value.([]string)
+		} else {
 			c.ThrowKeyPanic(key)
 		}
 	}
-	return value.(string)
+
+	return value
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -127,11 +163,11 @@ func (c *Config) writeDefConfigFile(filePath string) error {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-// Load
+// If filePath is defined and the file exists, Load gets the configuration from there, otherwise
+// it looks for the filename, specified in NewConfig in the current users home directory. If no file can be found
+// the function creates a file with the users default values.
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (c *Config) Load(loadDefaults loadDefFn, filePath string, watchConfig bool) error {
-
-	var err error
 
 	if len(filePath) == 0 {
 		usr, err := user.Current()
@@ -140,7 +176,7 @@ func (c *Config) Load(loadDefaults loadDefFn, filePath string, watchConfig bool)
 			return err
 		}
 
-		filePath = path.Join(usr.HomeDir, "crfetchrc.yaml")
+		filePath = path.Join(usr.HomeDir, c.configFileName)
 	}
 
 	loadDefaults(c)
@@ -159,12 +195,10 @@ func (c *Config) Load(loadDefaults loadDefFn, filePath string, watchConfig bool)
 
 		}
 	} else {
-
 		err = c.writeDefConfigFile(filePath)
 		if err != nil {
 			return err
 		}
-
 	}
 
 	return nil
