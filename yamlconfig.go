@@ -110,14 +110,14 @@ func (c *Config) GetString(key string) string {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetDuration
+// GetStringList
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetDuration(key string) time.Duration {
+func (c *Config) GetStringList(key string) []string {
 
-	value, err := config.GetDuration(key)
+	value, err := config.GetList(key)
 	if err != nil {
-		if val, ok := c.defaults[key]; ok {
-			return val.(time.Duration)
+		if value, ok := c.defaults[key]; ok {
+			return value.([]string)
 		} else {
 			c.ThrowKeyPanic(key)
 		}
@@ -127,14 +127,14 @@ func (c *Config) GetDuration(key string) time.Duration {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetStringList
+// GetDuration
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetStringList(key string) []string {
+func (c *Config) GetDuration(key string) time.Duration {
 
-	value, err := config.GetList(key)
+	value, err := config.GetDuration(key)
 	if err != nil {
-		if value, ok := c.defaults[key]; ok {
-			return value.([]string)
+		if val, ok := c.defaults[key]; ok {
+			return val.(time.Duration)
 		} else {
 			c.ThrowKeyPanic(key)
 		}
@@ -171,7 +171,6 @@ func (c *Config) Load(loadDefaults loadDefFn, filePath string, watchConfig bool)
 
 	if len(filePath) == 0 {
 		usr, err := user.Current()
-
 		if err != nil {
 			return err
 		}
@@ -182,21 +181,16 @@ func (c *Config) Load(loadDefaults loadDefFn, filePath string, watchConfig bool)
 	loadDefaults(c)
 	if _, err := os.Stat(filePath); err == nil {
 		if watchConfig {
-			err = config.ReadAndWatchConfigFile(filePath)
-			if err != nil {
+			if err := config.ReadAndWatchConfigFile(filePath); err != nil {
 				return err
 			}
-
 		} else {
-			err = config.ReadConfigFile(filePath)
-			if err != nil {
+			if err := config.ReadConfigFile(filePath); err != nil {
 				return err
 			}
-
 		}
 	} else {
-		err = c.writeDefConfigFile(filePath)
-		if err != nil {
+		if err = c.writeDefConfigFile(filePath); err != nil {
 			return err
 		}
 	}
