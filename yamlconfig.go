@@ -2,6 +2,7 @@ package yamlconfig
 
 import (
 	"fmt"
+	"github.com/denkhaus/tcgl/applog"
 	"github.com/globocom/config"
 	"os"
 	"os/user"
@@ -20,7 +21,9 @@ type Config struct {
 func NewConfig(fileName string) *Config {
 	config := &Config{
 		configFileName: fileName,
+		defaults:       make(map[string]interface{}),
 	}
+
 	return config
 }
 
@@ -75,7 +78,7 @@ func (c *Config) GetInt(key string) int {
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetInt
+// GetIntList
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
 func (c *Config) GetIntList(key string) []int {
 
@@ -159,7 +162,8 @@ func (c *Config) writeDefConfigFile(filePath string) error {
 		config.Set(key, value)
 	}
 
-	return config.WriteConfigFile(filePath, 644)
+	applog.Infof("Create new config file at %s", filePath)
+	return config.WriteConfigFile(filePath, 0644)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
