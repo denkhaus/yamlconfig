@@ -2,203 +2,147 @@ package yamlconfig
 
 import (
 	"fmt"
-	"github.com/denkhaus/tcgl/applog"
-	"github.com/globocom/config"
 	"os"
 	"os/user"
 	"path"
 	"strconv"
+	"strings"
+	"sync"
 	"time"
+
+	"github.com/denkhaus/tcgl/applog"
+	"github.com/globocom/config"
 )
 
-type loadDefFn func(conf *Config)
+type loadDefFn func(conf *YamlConfig)
 
-type Config struct {
-	defaults       map[string]interface{}
+type YamlConfig struct {
 	configFileName string
 }
 
-func NewConfig(fileName string) *Config {
-	config := &Config{
-		configFileName: fileName,
-		defaults:       make(map[string]interface{}),
+////////////////////////////////////////////////////////////////////////////////
+type ConfigSection struct {
+	data map[interface{}]interface{}
+	mut  sync.RWMutex
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) get(key string) (interface{}, error) {
+	keys := strings.Split(key, ":")
+	m.mut.RLock()
+	defer m.mut.RUnlock()
+	conf, ok := m.data[keys[0]]
+	if !ok {
+		return nil, fmt.Errorf("key %q not found", key)
+	}
+	for _, k := range keys[1:] {
+		conf, ok = conf.(map[interface{}]interface{})[k]
+		if !ok {
+			return nil, fmt.Errorf("key %q not found", key)
+		}
 	}
 
-	return config
+	return conf, nil
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) ThrowKeyPanic(key string) {
-	panic(fmt.Sprintf("config error: key %s not available", key))
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetObject(key string) interface{} {
+	value, err := m.get(key)
+	if err != nil {
+		panic(fmt.Sprintf("YamlConfig::key %s not available", key))
+	}
+
+	return value
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) ThrowConversionPanic(src interface{}, err error) {
-	panic(fmt.Sprintf("config error: cannot convert %v :: error : %s", src, err.Error()))
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetString(key string) string {
+	return m.GetObject(key).(string)
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) stringSlice2IntSlice(values []string) []int {
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetStringList(key string) []string {
+	value := m.GetObject(key)
 
-	if values != nil {
-		res := make([]int, len(values))
-		for n, src := range values {
-			if v, err := strconv.Atoi(src); err == nil {
-				res[n] = v
-			} else {
-				c.ThrowConversionPanic(src, err)
+	switch value.(type) {
+	case []interface{}:
+		v := value.([]interface{})
+		result := make([]string, len(v))
+		for i, item := range v {
+			switch item.(type) {
+			case int:
+				result[i] = strconv.Itoa(item.(int))
+			case bool:
+				result[i] = strconv.FormatBool(item.(bool))
+			case float64:
+				result[i] = strconv.FormatFloat(item.(float64), 'f', -1, 64)
+			case string:
+				result[i] = item.(string)
+			default:
+				result[i] = fmt.Sprintf("%v", item)
 			}
 		}
-		return res
+		return result
+	case []string:
+		return value.([]string)
 	}
 
-	return nil
+	return []string{}
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetInt
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetObject(key string) interface{} {
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetBool(key string) bool {
+	return m.GetObject(key).(bool)
+}
 
-	value, err := config.Get(key)
-	if err != nil {
-		if value, ok := c.defaults[key]; ok {
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetInt(key string) int {
+	return m.GetObject(key).(int)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetFloat64(key string) float64 {
+	return m.GetObject(key).(float64)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetDuration(key string) time.Duration {
+	value := m.GetObject(key)
+
+	switch value.(type) {
+	case int:
+		return time.Duration(value.(int))
+	case float64:
+		return time.Duration(value.(float64))
+	case string:
+		if value, err := time.ParseDuration(value.(string)); err == nil {
 			return value
 		}
-		c.ThrowKeyPanic(key)
 	}
 
-	return value
+	return 0
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetFloat
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetFloat(key string) float64 {
-	obj := c.GetObject(key)
-	return obj.(float64)
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetRaw() map[interface{}]interface{} {
+	return m.data
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetInt
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetInt(key string) int {
-	value, err := config.GetInt(key)
+////////////////////////////////////////////////////////////////////////////////
+func (c *YamlConfig) GetConfigSection(key string) *ConfigSection {
+	data, err := config.Get(key)
 	if err != nil {
-		if value, ok := c.defaults[key]; ok {
-			return value.(int)
-		}
-		c.ThrowKeyPanic(key)
+		panic(fmt.Sprintf("YamlConfig::key %s not available", key))
 	}
-
-	return value
+	m := ConfigSection{data: data.(map[interface{}]interface{})}
+	return &m
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetIntList
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetIntList(key string) []int {
-	if value, err := config.GetList(key); err == nil {
-		return c.stringSlice2IntSlice(value)
-	} else {
-		if val, ok := c.defaults[key]; ok {
-			return val.([]int)
-		} else {
-			c.ThrowKeyPanic(key)
-		}
-	}
-
-	return nil
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetString
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetString(key string) string {
-	value, err := config.GetString(key)
-	if err != nil {
-		if val, ok := c.defaults[key]; ok {
-			return val.(string)
-		} else {
-			c.ThrowKeyPanic(key)
-		}
-	}
-
-	return value
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetBool
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetBool(key string) bool {
-	value, err := config.GetBool(key)
-	if err != nil {
-		if val, ok := c.defaults[key]; ok {
-			return val.(bool)
-		} else {
-			c.ThrowKeyPanic(key)
-		}
-	}
-
-	return value
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetStringList
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetStringList(key string) []string {
-	value, err := config.GetList(key)
-	if err != nil {
-		if value, ok := c.defaults[key]; ok {
-			return value.([]string)
-		} else {
-			c.ThrowKeyPanic(key)
-		}
-	}
-
-	return value
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// GetDuration
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) GetDuration(key string) time.Duration {
-	value, err := config.GetDuration(key)
-	if err != nil {
-		if val, ok := c.defaults[key]; ok {
-			return val.(time.Duration)
-		} else {
-			c.ThrowKeyPanic(key)
-		}
-	}
-
-	return value
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) SetDefault(key string, value interface{}) {
-	c.defaults[key] = value
-}
-
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-//
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) writeDefConfigFile(filePath string) error {
-
-	for key, value := range c.defaults {
+////////////////////////////////////////////////////////////////////////////////
+func (c *YamlConfig) SetDefault(key string, value interface{}) {
+	if _, err := config.Get(key); err != nil {
 		config.Set(key, value)
 	}
-
-	applog.Infof("Create new config file at %s", filePath)
-	return config.WriteConfigFile(filePath, 0644)
 }
 
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
@@ -206,7 +150,7 @@ func (c *Config) writeDefConfigFile(filePath string) error {
 // it looks for the filename, specified in NewConfig in the current users home directory. If no file can be found
 // the function creates a file with the users default values.
 ///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *Config) Load(loadDefaults loadDefFn, filePath string, watchConfig bool) error {
+func (c *YamlConfig) Load(loadDefaults loadDefFn, filePath string, watchConfig bool) error {
 
 	if len(filePath) == 0 {
 		usr, err := user.Current()
@@ -229,10 +173,16 @@ func (c *Config) Load(loadDefaults loadDefFn, filePath string, watchConfig bool)
 			}
 		}
 	} else {
-		if err = c.writeDefConfigFile(filePath); err != nil {
+		applog.Infof("YamlConfig::create new config file at %s", filePath)
+		if err = config.WriteConfigFile(filePath, 0644); err != nil {
 			return err
 		}
 	}
 
 	return nil
+}
+
+func New(fileName string) *YamlConfig {
+	config := YamlConfig{configFileName: fileName}
+	return &config
 }
