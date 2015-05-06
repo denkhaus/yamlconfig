@@ -145,36 +145,56 @@ func (c *YamlConfig) SetDefault(key string, value interface{}) {
 	}
 }
 
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-// If filePath is defined and the file exists, Load gets the configuration from there, otherwise
-// it looks for the filename, specified in NewConfig in the current users home directory. If no file can be found
-// the function creates a file with the users default values.
-///////////////////////////////////////////////////////////////////////////////////////////////////////
-func (c *YamlConfig) Load(loadDefaults loadDefFn, filePath string, watchConfig bool) error {
-
-	if len(filePath) == 0 {
-		usr, err := user.Current()
-		if err != nil {
-			return err
-		}
-
-		filePath = path.Join(usr.HomeDir, c.configFileName)
+////////////////////////////////////////////////////////////////////////////////
+func (c *YamlConfig) GetCurrentFilePath() (string, error) {
+	if c.configFileName == "" {
+		fmt.Errorf("YamlConfig::Error::config filename not specified.")
 	}
 
-	loadDefaults(c)
-	if _, err := os.Stat(filePath); err == nil {
-		if watchConfig {
-			if err := config.ReadAndWatchConfigFile(filePath); err != nil {
-				return err
+	// look in current directory and make absolute
+	if _, err := os.Stat(c.configFileName); err == nil {
+		if !path.IsAbs(c.configFileName) {
+			wd, err := os.Getwd()
+			if err != nil {
+				fmt.Errorf("YamlConfig::Error::Getwd failed: %s", err)
 			}
-		} else {
-			if err := config.ReadConfigFile(filePath); err != nil {
-				return err
-			}
+			return path.Clean(path.Join(wd, c.configFileName)), nil
 		}
-	} else {
+		return c.configFileName, nil
+	}
+
+	// look in current users home directory
+	usr, err := user.Current()
+	if err != nil {
+		return "", fmt.Errorf("YamlConfig::get current user::%s", err)
+	}
+
+	filePath := path.Clean(path.Join(usr.HomeDir, c.configFileName))
+	if _, err := os.Stat(filePath); err != nil {
 		applog.Infof("YamlConfig::create new config file at %s", filePath)
 		if err = config.WriteConfigFile(filePath, 0644); err != nil {
+			return "", fmt.Errorf("YamlConfig::Write new config::%s", err)
+		}
+	}
+
+	return filePath, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (c *YamlConfig) Load(loadDefaults loadDefFn, watchConfig bool) error {
+	loadDefaults(c)
+
+	filePath, err := c.GetCurrentFilePath()
+	if err != nil {
+		return fmt.Errorf("YamlConfig::Load::%s", err)
+	}
+
+	if watchConfig {
+		if err := config.ReadAndWatchConfigFile(filePath); err != nil {
+			return err
+		}
+	} else {
+		if err := config.ReadConfigFile(filePath); err != nil {
 			return err
 		}
 	}
@@ -182,6 +202,7 @@ func (c *YamlConfig) Load(loadDefaults loadDefFn, filePath string, watchConfig b
 	return nil
 }
 
+////////////////////////////////////////////////////////////////////////////////
 func New(fileName string) *YamlConfig {
 	config := YamlConfig{configFileName: fileName}
 	return &config
