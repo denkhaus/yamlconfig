@@ -1,6 +1,7 @@
 package yamlconfig
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"os/user"
@@ -24,6 +25,16 @@ type YamlConfig struct {
 type ConfigSection struct {
 	data map[interface{}]interface{}
 	mut  sync.RWMutex
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) Unmarshal(target interface{}) error {
+	byt, err := json.Marshal(m.data)
+	if err != nil {
+		fmt.Errorf("YamlConfig::Error::Unmarshal::%s", err)
+	}
+
+	return json.Unmarshal(byt, target)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -129,13 +140,13 @@ func (m *ConfigSection) GetRaw() map[interface{}]interface{} {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-func (c *YamlConfig) GetConfigSection(key string) *ConfigSection {
+func (c *YamlConfig) GetConfigSection(key string) (*ConfigSection, error) {
 	data, err := config.Get(key)
 	if err != nil {
-		panic(fmt.Sprintf("YamlConfig::key %s not available", key))
+		return nil, fmt.Errorf("YamlConfig::key %s not available", key)
 	}
 	m := ConfigSection{data: data.(map[interface{}]interface{})}
-	return &m
+	return &m, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
