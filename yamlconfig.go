@@ -11,6 +11,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/davecgh/go-spew/spew"
 	"github.com/denkhaus/tcgl/applog"
 	"github.com/globocom/config"
 )
@@ -28,13 +29,26 @@ type ConfigSection struct {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+func Inspect(args ...interface{}) {
+	spew.Dump(args)
+}
+
+////////////////////////////////////////////////////////////////////////////////
 func (m *ConfigSection) Unmarshal(target interface{}) error {
-	byt, err := json.Marshal(m.data)
-	if err != nil {
-		fmt.Errorf("YamlConfig::Error::Unmarshal::%s", err)
+	d := make(map[string]interface{})
+	for k, v := range m.data {
+		d[k.(string)] = v
 	}
 
-	return json.Unmarshal(byt, target)
+	byt, err := json.Marshal(d)
+	if err != nil {
+		fmt.Errorf("YamlConfig::Unmarshal::Marshal data::%s", err)
+	}
+	if err := json.Unmarshal(byt, target); err != nil {
+		return fmt.Errorf("YamlConfig::Unmarshal::Unmarshal data::%s", err)
+	}
+
+	return nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -69,6 +83,16 @@ func (m *ConfigSection) GetObject(key string) interface{} {
 ////////////////////////////////////////////////////////////////////////////////
 func (m *ConfigSection) GetString(key string) string {
 	return m.GetObject(key).(string)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetStringDefault(key string, def string) string {
+	value, err := m.get(key)
+	if err != nil {
+		return def
+	}
+
+	return value.(string)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -107,13 +131,43 @@ func (m *ConfigSection) GetBool(key string) bool {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetBoolDefault(key string, def bool) bool {
+	value, err := m.get(key)
+	if err != nil {
+		return def
+	}
+
+	return value.(bool)
+}
+
+////////////////////////////////////////////////////////////////////////////////
 func (m *ConfigSection) GetInt(key string) int {
 	return m.GetObject(key).(int)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetIntDefault(key string, def int) int {
+	value, err := m.get(key)
+	if err != nil {
+		return def
+	}
+
+	return value.(int)
+}
+
+////////////////////////////////////////////////////////////////////////////////
 func (m *ConfigSection) GetFloat64(key string) float64 {
 	return m.GetObject(key).(float64)
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetFloat64Default(key string, def float64) float64 {
+	value, err := m.get(key)
+	if err != nil {
+		return def
+	}
+
+	return value.(float64)
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -142,8 +196,8 @@ func (m *ConfigSection) GetRaw() map[interface{}]interface{} {
 ////////////////////////////////////////////////////////////////////////////////
 func (c *YamlConfig) GetConfigSection(key string) (*ConfigSection, error) {
 	data, err := config.Get(key)
-	if err != nil {
-		return nil, fmt.Errorf("YamlConfig::key %s not available", key)
+	if data == nil || err != nil {
+		return nil, fmt.Errorf("YamlConfig::Data for key '%s' is not available", key)
 	}
 	m := ConfigSection{data: data.(map[interface{}]interface{})}
 	return &m, nil
