@@ -74,7 +74,8 @@ func (m *ConfigSection) get(key string) (interface{}, error) {
 func (m *ConfigSection) GetObject(key string) interface{} {
 	value, err := m.get(key)
 	if err != nil {
-		panic(fmt.Sprintf("YamlConfig::key %s not available", key))
+		applog.Errorf("YamlConfig::key %s not available", key)
+		os.Exit(1)
 	}
 
 	return value
