@@ -14,6 +14,7 @@ import (
 	"github.com/davecgh/go-spew/spew"
 	"github.com/denkhaus/tcgl/applog"
 	"github.com/globocom/config"
+	"github.com/juju/errors"
 )
 
 type loadDefFn func(conf *YamlConfig)
@@ -24,7 +25,7 @@ type YamlConfig struct {
 
 ////////////////////////////////////////////////////////////////////////////////
 type ConfigSection struct {
-	data map[interface{}]interface{}
+	data interface{}
 	mut  sync.RWMutex
 }
 
@@ -35,17 +36,22 @@ func Inspect(args ...interface{}) {
 
 ////////////////////////////////////////////////////////////////////////////////
 func (m *ConfigSection) Unmarshal(target interface{}) error {
+	data, ok := m.data.(map[interface{}]interface{})
+	if !ok {
+		return errors.New("YamlConfig::Unmarshal::data is no map")
+	}
+
 	d := make(map[string]interface{})
-	for k, v := range m.data {
+	for k, v := range data {
 		d[k.(string)] = v
 	}
 
 	byt, err := json.Marshal(d)
 	if err != nil {
-		fmt.Errorf("YamlConfig::Unmarshal::Marshal data::%s", err)
+		return errors.Errorf("YamlConfig::Unmarshal::Marshal data::%s", err)
 	}
 	if err := json.Unmarshal(byt, target); err != nil {
-		return fmt.Errorf("YamlConfig::Unmarshal::Unmarshal data::%s", err)
+		return errors.Errorf("YamlConfig::Unmarshal::Unmarshal data::%s", err)
 	}
 
 	return nil
@@ -56,14 +62,21 @@ func (m *ConfigSection) get(key string) (interface{}, error) {
 	keys := strings.Split(key, ":")
 	m.mut.RLock()
 	defer m.mut.RUnlock()
-	conf, ok := m.data[keys[0]]
+
+	data, ok := m.data.(map[interface{}]interface{})
+	if !ok {
+		return nil, errors.New("YamlConfig::get::data is no map")
+	}
+
+	conf, ok := data[keys[0]]
 	if !ok {
 		return nil, fmt.Errorf("key %q not found", key)
 	}
+
 	for _, k := range keys[1:] {
 		conf, ok = conf.(map[interface{}]interface{})[k]
 		if !ok {
-			return nil, fmt.Errorf("key %q not found", key)
+			return nil, errors.Errorf("key %q not found", key)
 		}
 	}
 
@@ -190,17 +203,20 @@ func (m *ConfigSection) GetDuration(key string) time.Duration {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-func (m *ConfigSection) GetRaw() map[interface{}]interface{} {
+func (m *ConfigSection) GetRaw() interface{} {
 	return m.data
 }
 
 ////////////////////////////////////////////////////////////////////////////////
 func (c *YamlConfig) GetConfigSection(key string) (*ConfigSection, error) {
 	data, err := config.Get(key)
-	if data == nil || err != nil {
-		return nil, fmt.Errorf("YamlConfig::Data for key '%s' is not available", key)
+	if err != nil {
+		return nil, errors.Annotate(err, "get data")
 	}
-	m := ConfigSection{data: data.(map[interface{}]interface{})}
+	if data == nil {
+		return nil, errors.Errorf("YamlConfig::Data for key '%s' is not available", key)
+	}
+	m := ConfigSection{data: data}
 	return &m, nil
 }
 
@@ -255,13 +271,14 @@ func (c *YamlConfig) Load(loadDefaults loadDefFn, watchConfig bool) error {
 		return fmt.Errorf("YamlConfig::Load::%s", err)
 	}
 
+	applog.Infof("YamlConfig::load config from path:%q", filePath)
 	if watchConfig {
 		if err := config.ReadAndWatchConfigFile(filePath); err != nil {
-			return err
+			return errors.Annotate(err, "read and watch config")
 		}
 	} else {
 		if err := config.ReadConfigFile(filePath); err != nil {
-			return err
+			return errors.Annotate(err, "read config")
 		}
 	}
 
