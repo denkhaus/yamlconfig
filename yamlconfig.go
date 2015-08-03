@@ -217,6 +217,7 @@ func (m *ConfigSection) GetSection(key string) (*ConfigSection, error) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
+
 func (m *ConfigSection) GetRaw() interface{} {
 	return m.data
 }
