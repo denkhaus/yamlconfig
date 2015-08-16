@@ -203,7 +203,17 @@ func (m *ConfigSection) GetDuration(key string) time.Duration {
 		}
 	}
 
-	return 0
+	return -1
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) GetDurationDefault(key string, def time.Duration) time.Duration {
+	value := m.GetDuration(key)
+	if value == time.Duration(-1) {
+		return def
+	}
+
+	return value
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -214,6 +224,15 @@ func (m *ConfigSection) GetSection(key string) (*ConfigSection, error) {
 	}
 
 	return &ConfigSection{data: data}, nil
+}
+
+////////////////////////////////////////////////////////////////////////////////
+func (m *ConfigSection) MustGetSection(key string) *ConfigSection {
+	s, err := m.GetSection(key)
+	if err != nil {
+		panic(err.Error())
+	}
+	return s
 }
 
 ////////////////////////////////////////////////////////////////////////////////
