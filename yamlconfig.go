@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/user"
 	"path"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"sync"
@@ -23,7 +24,7 @@ var (
 type loadDefFn func(conf *YamlConfig)
 
 type YamlConfig struct {
-	configFileName string
+	configFilePath string
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -268,21 +269,36 @@ func (c *YamlConfig) SetDefault(key string, value interface{}) {
 
 ////////////////////////////////////////////////////////////////////////////////
 func (c *YamlConfig) GetCurrentFilePath() (string, error) {
-	if c.configFileName == "" {
-		errors.New("config filename not specified.")
+	cnfPath := c.configFilePath
+
+	if cnfPath == "" {
+		return "", errors.New("config file path not specified.")
+	}
+
+	if !path.IsAbs(cnfPath) {
+		if p, err := filepath.Abs(cnfPath); err == nil {
+			cnfPath = p
+		}
+	}
+
+	if _, err := os.Stat(cnfPath); err == nil {
+		return cnfPath, nil
+	}
+
+	logger.Infof("config file not found at %q, looking in cwd", cnfPath)
+
+	wd, err := os.Getwd()
+	if err != nil {
+		return "", fmt.Errorf("YamlConfig::Error::Getwd failed: %s", err)
 	}
 
 	// look in current directory and make absolute
-	if _, err := os.Stat(c.configFileName); err == nil {
-		if !path.IsAbs(c.configFileName) {
-			wd, err := os.Getwd()
-			if err != nil {
-				errors.Annotate(err, "getwd")
-			}
-			return path.Clean(path.Join(wd, c.configFileName)), nil
-		}
-		return c.configFileName, nil
+	filePath := path.Clean(path.Join(wd, cnfPath))
+	if _, err := os.Stat(filePath); err == nil {
+		return filePath, nil
 	}
+
+	logger.Infof("config file not found at %q, looking in users home directory", cnfPath)
 
 	// look in current users home directory
 	usr, err := user.Current()
@@ -290,7 +306,7 @@ func (c *YamlConfig) GetCurrentFilePath() (string, error) {
 		return "", errors.Annotate(err, "get current user:")
 	}
 
-	filePath := path.Clean(path.Join(usr.HomeDir, c.configFileName))
+	filePath = path.Clean(path.Join(usr.HomeDir, c.configFilePath))
 	if _, err := os.Stat(filePath); err != nil {
 		logger.Infof("create new config file at %s", filePath)
 		if err = config.WriteConfigFile(filePath, 0644); err != nil {
@@ -298,7 +314,7 @@ func (c *YamlConfig) GetCurrentFilePath() (string, error) {
 		}
 	}
 
-	return filePath, nil
+	return cnfPath, nil
 }
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -325,7 +341,7 @@ func (c *YamlConfig) Load(loadDefaults loadDefFn, watchConfig bool) error {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-func New(fileName string) *YamlConfig {
-	config := YamlConfig{configFileName: fileName}
+func New(filePath string) *YamlConfig {
+	config := YamlConfig{configFilePath: filePath}
 	return &config
 }
