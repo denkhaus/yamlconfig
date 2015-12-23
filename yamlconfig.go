@@ -11,9 +11,13 @@ import (
 	"sync"
 	"time"
 
-	"github.com/denkhaus/tcgl/applog"
+	"github.com/Sirupsen/logrus"
 	"github.com/globocom/config"
 	"github.com/juju/errors"
+)
+
+var (
+	logger = logrus.New().WithField("pkg", "yamlconfig")
 )
 
 type loadDefFn func(conf *YamlConfig)
@@ -32,7 +36,7 @@ type ConfigSection struct {
 func (m *ConfigSection) Unmarshal(target interface{}) error {
 	data, ok := m.data.(map[interface{}]interface{})
 	if !ok {
-		return errors.New("YamlConfig::Unmarshal::data is no map")
+		return errors.New("data is no map")
 	}
 
 	d := make(map[string]interface{})
@@ -42,10 +46,10 @@ func (m *ConfigSection) Unmarshal(target interface{}) error {
 
 	byt, err := json.Marshal(d)
 	if err != nil {
-		return errors.Errorf("YamlConfig::Unmarshal::Marshal data::%s", err)
+		return errors.Annotate(err, "marshal data")
 	}
 	if err := json.Unmarshal(byt, target); err != nil {
-		return errors.Errorf("YamlConfig::Unmarshal::Unmarshal data::%s", err)
+		return errors.Annotate(err, "unmarshal data")
 	}
 
 	return nil
@@ -59,7 +63,7 @@ func (m *ConfigSection) get(key string) (interface{}, error) {
 
 	data, ok := m.data.(map[interface{}]interface{})
 	if !ok {
-		return nil, errors.New("YamlConfig::get::data is no map")
+		return nil, errors.New("data is no map")
 	}
 
 	conf, ok := data[keys[0]]
@@ -81,8 +85,8 @@ func (m *ConfigSection) get(key string) (interface{}, error) {
 func (m *ConfigSection) GetObject(key string) interface{} {
 	value, err := m.get(key)
 	if err != nil {
-		applog.Errorf("YamlConfig::key %s not available", key)
-		os.Exit(1)
+		logger.Fatalf("key %s not available", key)
+
 	}
 
 	return value
@@ -220,7 +224,7 @@ func (m *ConfigSection) GetDurationDefault(key string, def time.Duration) time.D
 func (m *ConfigSection) GetSection(key string) (*ConfigSection, error) {
 	data := m.GetObject(key)
 	if data == nil {
-		return nil, errors.Errorf("YamlConfig::Data for key '%s' is not available", key)
+		return nil, errors.Errorf("data for key '%s' is not available", key)
 	}
 
 	return &ConfigSection{data: data}, nil
@@ -248,8 +252,9 @@ func (c *YamlConfig) GetConfigSection(key string) (*ConfigSection, error) {
 		return nil, errors.Annotate(err, "get data")
 	}
 	if data == nil {
-		return nil, errors.Errorf("YamlConfig::Data for key '%s' is not available", key)
+		return nil, errors.Annotatef(err, "data for key '%s' is not available", key)
 	}
+
 	m := ConfigSection{data: data}
 	return &m, nil
 }
@@ -264,7 +269,7 @@ func (c *YamlConfig) SetDefault(key string, value interface{}) {
 ////////////////////////////////////////////////////////////////////////////////
 func (c *YamlConfig) GetCurrentFilePath() (string, error) {
 	if c.configFileName == "" {
-		fmt.Errorf("YamlConfig::Error::config filename not specified.")
+		errors.New("config filename not specified.")
 	}
 
 	// look in current directory and make absolute
@@ -272,7 +277,7 @@ func (c *YamlConfig) GetCurrentFilePath() (string, error) {
 		if !path.IsAbs(c.configFileName) {
 			wd, err := os.Getwd()
 			if err != nil {
-				fmt.Errorf("YamlConfig::Error::Getwd failed: %s", err)
+				errors.Annotate(err, "getwd")
 			}
 			return path.Clean(path.Join(wd, c.configFileName)), nil
 		}
@@ -282,14 +287,14 @@ func (c *YamlConfig) GetCurrentFilePath() (string, error) {
 	// look in current users home directory
 	usr, err := user.Current()
 	if err != nil {
-		return "", fmt.Errorf("YamlConfig::get current user::%s", err)
+		return "", errors.Annotate(err, "get current user:")
 	}
 
 	filePath := path.Clean(path.Join(usr.HomeDir, c.configFileName))
 	if _, err := os.Stat(filePath); err != nil {
-		applog.Infof("YamlConfig::create new config file at %s", filePath)
+		logger.Infof("create new config file at %s", filePath)
 		if err = config.WriteConfigFile(filePath, 0644); err != nil {
-			return "", fmt.Errorf("YamlConfig::Write new config::%s", err)
+			return "", errors.Annotate(err, "write new config")
 		}
 	}
 
@@ -302,10 +307,10 @@ func (c *YamlConfig) Load(loadDefaults loadDefFn, watchConfig bool) error {
 
 	filePath, err := c.GetCurrentFilePath()
 	if err != nil {
-		return fmt.Errorf("YamlConfig::Load::%s", err)
+		return errors.Annotate(err, "get current file path")
 	}
 
-	applog.Infof("YamlConfig::load config from path:%q", filePath)
+	logger.Infof("load config from path:%q", filePath)
 	if watchConfig {
 		if err := config.ReadAndWatchConfigFile(filePath); err != nil {
 			return errors.Annotate(err, "read and watch config")
