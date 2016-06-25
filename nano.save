@@ -1,7 +1,0 @@
-diff --git a/yamlconfig.go b/yamlconfig.go index 2f5e925..c8b0769 100644 --- a/yamlconfig.go +++ b/yamlconfig.go @@ -12,9 +12,9 @@ import (
- 	"sync" "time"
- 
-+	"github.com/Sirupsen/logrus"
- 	"github.com/globocom/config" "github.com/juju/errors" -	"github.com/sirupsen/logrus" )
- 
- var (
