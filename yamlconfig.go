@@ -263,7 +263,7 @@ func (c *YamlConfig) SetDefault(key string, value interface{}) {
 }
 
 ////////////////////////////////////////////////////////////////////////////////
-func (c *YamlConfig) GetCurrentFilePath() (string, error) {
+func (c *YamlConfig) confFilePath() (string, error) {
 	cnfPath := c.configFilePath
 
 	if cnfPath == "" {
@@ -303,7 +303,7 @@ func (c *YamlConfig) GetCurrentFilePath() (string, error) {
 
 	cnfPath = path.Clean(path.Join(usr.HomeDir, cnfPath))
 	if _, err := os.Stat(cnfPath); err != nil {
-		applog.Infof("YamlConfig::Config file in users home directory not found. Create new config file at %q", cnfPath)
+		applog.Infof("YamlConfig::Config file in home directory not found. Create new config file at %q", cnfPath)
 		if err = config.WriteConfigFile(cnfPath, 0644); err != nil {
 			return "", fmt.Errorf("YamlConfig::Write new config::%s", err)
 		}
@@ -316,7 +316,7 @@ func (c *YamlConfig) GetCurrentFilePath() (string, error) {
 func (c *YamlConfig) Load(loadDefaults loadDefFn, watchConfig bool) error {
 	loadDefaults(c)
 
-	filePath, err := c.GetCurrentFilePath()
+	filePath, err := c.confFilePath()
 	if err != nil {
 		return fmt.Errorf("YamlConfig::Load::%s", err)
 	}
