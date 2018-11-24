@@ -12,9 +12,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/Sirupsen/logrus"
 	"github.com/globocom/config"
 	"github.com/juju/errors"
+	"github.com/sirupsen/logrus"
 )
 
 var (
