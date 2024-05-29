@@ -15,6 +15,7 @@ import (
 	"github.com/juju/errors"
 	"github.com/sirupsen/logrus"
 	"github.com/tsuru/config"
+	"gopkg.in/yaml.v3"
 )
 
 var (
@@ -122,20 +123,19 @@ func (m *ConfigSection) GetStringDefault(key string, def string) string {
 func (m *ConfigSection) GetStringList(key string) []string {
 	value := m.GetObject(key)
 
-	switch value.(type) {
+	switch v1 := value.(type) {
 	case []interface{}:
-		v := value.([]interface{})
-		result := make([]string, len(v))
-		for i, item := range v {
-			switch item.(type) {
+		result := make([]string, len(v1))
+		for i, item := range v1 {
+			switch v2 := item.(type) {
 			case int:
-				result[i] = strconv.Itoa(item.(int))
+				result[i] = strconv.Itoa(v2)
 			case bool:
-				result[i] = strconv.FormatBool(item.(bool))
+				result[i] = strconv.FormatBool(v2)
 			case float64:
-				result[i] = strconv.FormatFloat(item.(float64), 'f', -1, 64)
+				result[i] = strconv.FormatFloat(v2, 'f', -1, 64)
 			case string:
-				result[i] = item.(string)
+				result[i] = v2
 			default:
 				result[i] = fmt.Sprintf("%v", item)
 			}
@@ -197,13 +197,13 @@ func (m *ConfigSection) GetFloat64Default(key string, def float64) float64 {
 func (m *ConfigSection) GetDuration(key string) time.Duration {
 	value := m.GetObject(key)
 
-	switch value.(type) {
+	switch v := value.(type) {
 	case int:
-		return time.Duration(value.(int))
+		return time.Duration(v)
 	case float64:
-		return time.Duration(value.(float64))
+		return time.Duration(v)
 	case string:
-		if value, err := time.ParseDuration(value.(string)); err == nil {
+		if value, err := time.ParseDuration(v); err == nil {
 			return value
 		}
 	}
@@ -317,7 +317,13 @@ func (c *YamlConfig) confFilePath() (string, error) {
 	return cnfPath, nil
 }
 
-// //////////////////////////////////////////////////////////////////////////////
+// Load loads the YAML configuration file and applies default values.
+//
+// It takes two parameters:
+// - loadDefaults: a function that applies default values to the YAML configuration.
+// - watchConfig: a boolean indicating whether to watch for changes in the configuration file.
+//
+// It returns an error if there is any issue loading the configuration file or applying default values.
 func (c *YamlConfig) Load(loadDefaults loadDefFn, watchConfig bool) error {
 	loadDefaults(c)
 
@@ -340,7 +346,32 @@ func (c *YamlConfig) Load(loadDefaults loadDefFn, watchConfig bool) error {
 	return nil
 }
 
-// //////////////////////////////////////////////////////////////////////////////
+// LoadMap loads a map of key-value pairs into the YamlConfig object.
+//
+// The data parameter is a map[string]interface{} that contains the key-value pairs to be loaded.
+// The function returns an error if there is any issue with marshaling the data into YAML or reading the YAML bytes into the configuration.
+// The error is annotated with the "Marshal" or "ReadConfigBytes" tag, respectively.
+// The function returns nil if the loading is successful.
+func (c *YamlConfig) LoadMap(data map[string]interface{}) error {
+	buffer, err := yaml.Marshal(data)
+	if err != nil {
+		return errors.Annotate(err, "Marshal")
+	}
+
+	if err := config.ReadConfigBytes(buffer); err != nil {
+		return errors.Annotate(err, "ReadConfigBytes")
+	}
+
+	return nil
+}
+
+// New creates a new instance of YamlConfig with the specified file path.
+//
+// Parameters:
+// - filePath: The path to the YAML configuration file.
+//
+// Returns:
+// - A pointer to the newly created YamlConfig instance.
 func New(filePath string) *YamlConfig {
 	config := YamlConfig{configFilePath: filePath}
 	return &config
