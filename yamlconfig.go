@@ -346,23 +346,24 @@ func (c *YamlConfig) Load(loadDefaults loadDefFn, watchConfig bool) error {
 	return nil
 }
 
-// LoadMap loads a map of key-value pairs into the YamlConfig object.
+// NewFromMap creates a new instance of YamlConfig from a map.
 //
-// The data parameter is a map[string]interface{} that contains the key-value pairs to be loaded.
-// The function returns an error if there is any issue with marshaling the data into YAML or reading the YAML bytes into the configuration.
-// The error is annotated with the "Marshal" or "ReadConfigBytes" tag, respectively.
-// The function returns nil if the loading is successful.
-func (c *YamlConfig) LoadMap(data map[string]interface{}) error {
+// Parameters:
+// - data: The map containing the configuration data.
+//
+// Returns:
+// - A pointer to the newly created YamlConfig instance.
+func NewFromMap(data map[string]string) (*YamlConfig, error) {
 	buffer, err := yaml.Marshal(data)
 	if err != nil {
-		return errors.Annotate(err, "Marshal")
+		return nil, errors.Annotate(err, "Marshal")
 	}
 
 	if err := config.ReadConfigBytes(buffer); err != nil {
-		return errors.Annotate(err, "ReadConfigBytes")
+		return nil, errors.Annotate(err, "ReadConfigBytes")
 	}
 
-	return nil
+	return new(YamlConfig), nil
 }
 
 // New creates a new instance of YamlConfig with the specified file path.
