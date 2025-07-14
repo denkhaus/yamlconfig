@@ -4,9 +4,9 @@ go 1.19
 
 require (
 	github.com/juju/errors v1.0.0
-	github.com/sirupsen/logrus v1.9.0
+	github.com/sirupsen/logrus v1.9.3
 	github.com/tsuru/config v0.0.0-20201023175036-375aaee8b560
-	gopkg.in/yaml.v3 v3.0.0-20200313102051-9f266ea9e77c
+	gopkg.in/yaml.v3 v3.0.1
 )
 
 require (
